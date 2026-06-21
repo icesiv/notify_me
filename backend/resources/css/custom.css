@@ -1,0 +1,21 @@
+/* Custom premium stylish overrides for Filament Admin Panel - Dark Mode Only */
+
+/* Stats widget overrides for premium dark theme cards */
+.fi-wi-stats-overview-stat-card {
+    background: rgba(6, 20, 15, 0.5) !important;
+    border: 1px solid rgba(16, 185, 129, 0.15) !important;
+    backdrop-filter: blur(12px) !important;
+    border-radius: 20px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+    transition: transform 0.3s ease !important;
+}
+
+.fi-wi-stats-overview-stat-card:hover {
+    transform: translateY(-4px) !important;
+    border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+/* Hide the default theme switcher in the user dropdown menu */
+.fi-dropdown-list:has(.fi-theme-switcher) {
+    display: none !important;
+}

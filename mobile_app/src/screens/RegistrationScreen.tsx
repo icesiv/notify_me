@@ -12,6 +12,7 @@ import {
   Animated,
   StatusBar,
   Alert,
+  Image,
 } from 'react-native';
 import { API_BASE_URL, getApiHeaders } from '../config/api';
 
@@ -112,7 +113,7 @@ export default function RegistrationScreen({ onRegisterSuccess, onNavigateToLogi
 
       setIsLoading(false);
       setIsSuccess(true);
-      
+
       // Animate success screen fade in
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -146,7 +147,7 @@ export default function RegistrationScreen({ onRegisterSuccess, onNavigateToLogi
             Your user ID (Phone Number) is: {'\n'}
             <Text style={styles.phoneBadge}>{phoneNumber}</Text>
           </Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.doneButton}
             onPress={() => {
               const savedPhone = phoneNumber;
@@ -180,16 +181,17 @@ export default function RegistrationScreen({ onRegisterSuccess, onNavigateToLogi
       >
         {/* Brand logo container */}
         <View style={styles.headerContainer}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoBadgeText}>N</Text>
-          </View>
-          <Text style={styles.brandTitle}>NotifyMe</Text>
+          <Image
+            source={require('../../assets/logo-text.png')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
           <Text style={styles.brandSubtitle}>Create your account to get started</Text>
         </View>
 
         {/* Input Fields */}
         <View style={styles.formContainer}>
-          
+
           {/* Full Name Field */}
           <View style={styles.inputWrapper}>
             <Text style={styles.fieldLabel}>Full Name</Text>
@@ -201,7 +203,7 @@ export default function RegistrationScreen({ onRegisterSuccess, onNavigateToLogi
               <Text style={styles.inputIcon}>👤</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="John Doe"
+                placeholder="Your Full Name"
                 placeholderTextColor="#64748B"
                 value={fullName}
                 onChangeText={(text) => {
@@ -228,7 +230,7 @@ export default function RegistrationScreen({ onRegisterSuccess, onNavigateToLogi
               <Text style={styles.inputIcon}>📞</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="+1 234 567 8900"
+                placeholder="Your Phone Number"
                 placeholderTextColor="#64748B"
                 value={phoneNumber}
                 onChangeText={(text) => {
@@ -256,7 +258,7 @@ export default function RegistrationScreen({ onRegisterSuccess, onNavigateToLogi
               <Text style={styles.inputIcon}>🔑</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="••••••••"
+                placeholder="Password"
                 placeholderTextColor="#64748B"
                 value={password}
                 onChangeText={(text) => {
@@ -269,7 +271,7 @@ export default function RegistrationScreen({ onRegisterSuccess, onNavigateToLogi
                 autoCapitalize="none"
                 autoCorrect={false}
               />
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => setShowPassword(!showPassword)}
                 style={styles.visibilityButton}
                 activeOpacity={0.6}
@@ -352,30 +354,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 32,
   },
-  logoBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#7C3AED', // Vivid Indigo/Violet
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#7C3AED',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
-    marginBottom: 16,
-  },
-  logoBadgeText: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  brandTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
+  logoImage: {
+    width: 240,
+    height: 76,
+    marginBottom: 8,
   },
   brandSubtitle: {
     fontSize: 14,

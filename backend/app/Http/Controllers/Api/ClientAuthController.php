@@ -84,4 +84,52 @@ class ClientAuthController extends Controller
             'api_token' => $client->api_token,
         ], 200);
     }
+
+    public function updateProfile(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'api_token' => 'required|string',
+            'full_name' => 'nullable|string|min:3|max:255',
+            'password' => 'nullable|string|min:6',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $client = Client::where('api_token', $request->api_token)->first();
+
+        if (!$client) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized'
+            ], 401);
+        }
+
+        $updates = [];
+        if ($request->has('full_name') && !empty($request->full_name)) {
+            $updates['full_name'] = $request->full_name;
+        }
+
+        if ($request->has('password') && !empty($request->password)) {
+            $updates['password'] = $request->password;
+        }
+
+        if (!empty($updates)) {
+            $client->update($updates);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Profile updated successfully',
+            'client' => [
+                'id' => $client->id,
+                'full_name' => $client->full_name,
+                'phone_number' => $client->phone_number,
+            ]
+        ], 200);
+    }
 }

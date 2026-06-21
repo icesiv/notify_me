@@ -1,4 +1,4 @@
-package com.mobile_app
+package com.pippasync.notify_me
 
 import android.app.Application
 import com.facebook.react.PackageList

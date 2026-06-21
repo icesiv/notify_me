@@ -17,6 +17,8 @@ class ClientResource extends Resource
 
     protected static ?string $navigationLabel = 'Clients';
 
+    protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-user-group';
+
     protected static ?int $navigationSort = 2;
 
     public static function form(Schema $schema): Schema
@@ -54,6 +56,10 @@ class ClientResource extends Resource
                 Tables\Columns\TextColumn::make('phone_number')
                     ->searchable()
                     ->sortable(),
+                Tables\Columns\IconColumn::make('fcm_token')
+                    ->label('FCM Token')
+                    ->boolean()
+                    ->getStateUsing(fn ($record): bool => (bool) $record->fcm_token),
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Created')
                     ->dateTime()

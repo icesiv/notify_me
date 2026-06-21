@@ -633,7 +633,7 @@
         <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <div class="section-card">
-                <h2>Authentication API</h2>
+                <h2>Client API</h2>
                 <ul class="route-list">
                     <li class="route-item active" id="route-register">
                         <button onclick="selectRoute('register')">
@@ -645,6 +645,24 @@
                         <button onclick="selectRoute('login')">
                             <span>Login Client</span>
                             <span class="method-badge post">POST</span>
+                        </button>
+                    </li>
+                    <li class="route-item" id="route-update_fcm_token">
+                        <button onclick="selectRoute('update_fcm_token')">
+                            <span>Update FCM Token</span>
+                            <span class="method-badge post">POST</span>
+                        </button>
+                    </li>
+                    <li class="route-item" id="route-update_profile">
+                        <button onclick="selectRoute('update_profile')">
+                            <span>Update Profile</span>
+                            <span class="method-badge post">POST</span>
+                        </button>
+                    </li>
+                    <li class="route-item" id="route-get_notifications">
+                        <button onclick="selectRoute('get_notifications')">
+                            <span>Get Notifications</span>
+                            <span class="method-badge get">GET</span>
                         </button>
                     </li>
                 </ul>
@@ -762,6 +780,48 @@
                 defaultPayload: {
                     phone_number: '+1234567890',
                     password: 'secretpassword'
+                }
+            },
+            update_fcm_token: {
+                name: 'Update FCM Token',
+                url: '/api/update-fcm-token',
+                method: 'POST',
+                description: 'Update the Firebase Cloud Messaging (FCM) registration token for an authenticated client user using their API access token.',
+                parameters: [
+                    { name: 'api_token', type: 'string', required: true, validation: 'required', desc: 'The client\'s current API token.' },
+                    { name: 'fcm_token', type: 'string', required: true, validation: 'required', desc: 'The FCM device token from Firebase.' }
+                ],
+                defaultPayload: {
+                    api_token: '',
+                    fcm_token: 'sample_fcm_token_123456789'
+                }
+            },
+            update_profile: {
+                name: 'Update Profile',
+                url: '/api/update-profile',
+                method: 'POST',
+                description: 'Update the name and/or password for an authenticated client user using their API access token.',
+                parameters: [
+                    { name: 'api_token', type: 'string', required: true, validation: 'required', desc: 'The client\'s current API token.' },
+                    { name: 'full_name', type: 'string', required: false, validation: 'min:3|max:255', desc: 'The new full name of the client (optional).' },
+                    { name: 'password', type: 'string', required: false, validation: 'min:6', desc: 'The new password of the client (optional).' }
+                ],
+                defaultPayload: {
+                    api_token: '',
+                    full_name: 'Jane Doe',
+                    password: 'newsecretpassword'
+                }
+            },
+            get_notifications: {
+                name: 'Get Notifications',
+                url: '/api/notifications',
+                method: 'POST',
+                description: 'Retrieve the notification history for an authenticated client user using their API access token.',
+                parameters: [
+                    { name: 'api_token', type: 'string', required: true, validation: 'required', desc: 'The client\'s current API token.' }
+                ],
+                defaultPayload: {
+                    api_token: ''
                 }
             }
         };

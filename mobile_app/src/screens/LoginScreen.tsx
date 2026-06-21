@@ -12,12 +12,13 @@ import {
   Animated,
   StatusBar,
   Alert,
+  Image,
 } from 'react-native';
 import { API_BASE_URL, getApiHeaders } from '../config/api';
 
 interface LoginScreenProps {
   initialPhoneNumber?: string;
-  onLoginSuccess?: (userData: { phoneNumber: string }) => void;
+  onLoginSuccess?: (userData: { phoneNumber: string; apiToken?: string; fullName?: string }) => void;
   onNavigateToRegister: () => void;
 }
 
@@ -143,7 +144,7 @@ export default function LoginScreen({ initialPhoneNumber, onLoginSuccess, onNavi
       setPhoneNumber('');
       setPassword('');
       if (onLoginSuccess) {
-        onLoginSuccess({ phoneNumber: savedPhone });
+        onLoginSuccess({ phoneNumber: savedPhone, apiToken: data.api_token, fullName: data.client?.full_name });
       }
     } catch (error: any) {
       console.error('Login Error:', error);
@@ -170,16 +171,17 @@ export default function LoginScreen({ initialPhoneNumber, onLoginSuccess, onNavi
       >
         {/* Brand logo container */}
         <View style={styles.headerContainer}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoBadgeText}>N</Text>
-          </View>
-          <Text style={styles.brandTitle}>NotifyMe</Text>
+          <Image
+            source={require('../../assets/logo-text.png')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
           <Text style={styles.brandSubtitle}>Sign in to access your account</Text>
         </View>
 
         {/* Input Fields */}
         <View style={styles.formContainer}>
-          
+
           {/* Phone Number Field */}
           <View style={styles.inputWrapper}>
             <Text style={styles.fieldLabel}>Phone Number (User ID)</Text>
@@ -191,7 +193,7 @@ export default function LoginScreen({ initialPhoneNumber, onLoginSuccess, onNavi
               <Text style={styles.inputIcon}>📞</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="+1 234 567 8900"
+                placeholder="Your Phone Number"
                 placeholderTextColor="#64748B"
                 value={phoneNumber}
                 onChangeText={(text) => {
@@ -219,7 +221,7 @@ export default function LoginScreen({ initialPhoneNumber, onLoginSuccess, onNavi
               <Text style={styles.inputIcon}>🔑</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="••••••••"
+                placeholder="Password "
                 placeholderTextColor="#64748B"
                 value={password}
                 onChangeText={(text) => {
@@ -320,30 +322,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 40,
   },
-  logoBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#7C3AED',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#7C3AED',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
-    marginBottom: 16,
-  },
-  logoBadgeText: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  brandTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
+  logoImage: {
+    width: 240,
+    height: 76,
+    marginBottom: 8,
   },
   brandSubtitle: {
     fontSize: 14,
