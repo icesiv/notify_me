@@ -25,7 +25,7 @@ class ClientResource extends Resource
     {
         return $schema
             ->schema([
-                Forms\Components\Section::make('Client Information')
+                \Filament\Schemas\Components\Section::make('Client Information')
                     ->schema([
                         Forms\Components\TextInput::make('full_name')
                             ->label('Full Name')
@@ -42,6 +42,11 @@ class ClientResource extends Resource
                             ->required(fn (string $operation): bool => $operation === 'create')
                             ->maxLength(255)
                             ->label(fn (string $operation): string => $operation === 'create' ? 'Password' : 'New Password (leave blank to keep current)'),
+                        Forms\Components\Select::make('groups')
+                            ->relationship('groups', 'name')
+                            ->multiple()
+                            ->preload()
+                            ->searchable(),
                     ]),
             ]);
     }
@@ -53,6 +58,25 @@ class ClientResource extends Resource
                 Tables\Columns\TextColumn::make('full_name')
                     ->searchable()
                     ->sortable(),
+                Tables\Columns\TextColumn::make('groups_count')
+                    ->counts('groups')
+                    ->label('Groups Count')
+                    ->badge()
+                    ->color('info')
+                    ->sortable()
+                    ->action(
+                        Actions\Action::make('viewGroups')
+                            ->modalHeading(fn (Client $record) => "{$record->full_name}'s Groups")
+                            ->modalSubmitAction(false)
+                            ->modalCancelActionLabel('Close')
+                            ->infolist([
+                                \Filament\Infolists\Components\TextEntry::make('groups.name')
+                                    ->label('Assigned Groups')
+                                    ->badge()
+                                    ->color('primary')
+                                    ->placeholder('No groups assigned.'),
+                            ])
+                    ),
                 Tables\Columns\TextColumn::make('phone_number')
                     ->searchable()
                     ->sortable(),

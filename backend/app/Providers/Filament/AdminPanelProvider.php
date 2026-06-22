@@ -43,6 +43,10 @@ class AdminPanelProvider extends PanelProvider
             ->assets([
                 \Filament\Support\Assets\Css::make('custom-stylesheet', resource_path('css/custom.css')),
             ])
+            ->renderHook(
+                \Filament\View\PanelsRenderHook::HEAD_END,
+                fn (): string => \Illuminate\Support\Facades\Blade::render('@vite(\'resources/css/app.css\')')
+            )
             ->darkMode(true, true)
             ->middleware([
                 EncryptCookies::class,

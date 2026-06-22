@@ -15,10 +15,15 @@ class SentNotification extends Model
         'body',
         'client_id',
         'sent_to_all',
+        'target_group_ids',
+        'type',
+        'payload',
     ];
 
     protected $casts = [
         'sent_to_all' => 'boolean',
+        'target_group_ids' => 'array',
+        'payload' => 'array',
     ];
 
     public function client(): BelongsTo

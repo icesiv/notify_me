@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
   Modal,
   StatusBar,
   Platform,
@@ -12,19 +11,18 @@ import {
   Alert,
   Animated,
   TextInput,
+  Vibration,
+  DeviceEventEmitter,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL, getApiHeaders } from '../config/api';
 
-interface NotificationItem {
-  id: string;
-  title: string;
-  description: string;
-  time: string;
-  isRead: boolean;
-  type: 'announcement' | 'alert' | 'message';
-}
+// Import Tab Components
+import NotificationsTab, { NotificationItem } from '../components/NotificationsTab';
+import ReminderTimerTab from '../components/ReminderTimerTab';
+import TasksTab from '../components/TasksTab';
+import PrvNotificationsTab from '../components/PrvNotificationsTab';
 
 interface HomeScreenProps {
   onLogout: () => void;
@@ -61,6 +59,7 @@ const formatTime = (createdAtString: string) => {
 };
 
 const getType = (item: any) => {
+  if (item.type) return item.type;
   if (item.sent_to_all) return 'announcement';
   const titleLower = (item.title || '').toLowerCase();
   const bodyLower = (item.body || '').toLowerCase();
@@ -79,6 +78,9 @@ const getType = (item: any) => {
 };
 
 export default function HomeScreen({ onLogout, userName, onUpdateName, apiToken }: HomeScreenProps) {
+  // Navigation tab state
+  const [activeTab, setActiveTab] = useState<'notifications' | 'reminders' | 'tasks' | 'previous'>('notifications');
+
   const [menuVisible, setMenuVisible] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,7 +99,6 @@ export default function HomeScreen({ onLogout, userName, onUpdateName, apiToken 
   }>({});
 
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  const [previousVisible, setPreviousVisible] = useState(false);
 
   useEffect(() => {
     setProfileName(userName);
@@ -118,6 +119,62 @@ export default function HomeScreen({ onLogout, userName, onUpdateName, apiToken 
       }
     };
     loadDismissedIds();
+  }, []);
+
+  // Periodic reminders alarm checker
+  useEffect(() => {
+    const checkReminders = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('userReminders');
+        if (!stored) return;
+
+        const reminders = JSON.parse(stored);
+        let updated = false;
+        const now = new Date();
+
+        const activeReminders = reminders.map((r: any) => {
+          if (!r.isEnabled) return r;
+
+          // Parse YYYY-MM-DD and HH:MM
+          const [year, month, day] = r.date.split('-').map(Number);
+          const [hour, minute] = r.time.split(':').map(Number);
+          
+          if (isNaN(year) || isNaN(month) || isNaN(day) || isNaN(hour) || isNaN(minute)) {
+            return r;
+          }
+
+          const reminderTime = new Date(year, month - 1, day, hour, minute, 0);
+
+          if (now >= reminderTime) {
+            // Trigger Alarm!
+            Vibration.vibrate([0, 500, 200, 500, 200, 500]);
+            Alert.alert(
+              '⏰ Reminder Alarm! 🔔',
+              r.title,
+              [{ text: 'Dismiss Alarm', onPress: () => Vibration.cancel() }]
+            );
+            
+            updated = true;
+            return { ...r, isEnabled: false };
+          }
+
+          return r;
+        });
+
+        if (updated) {
+          await AsyncStorage.setItem('userReminders', JSON.stringify(activeReminders));
+          DeviceEventEmitter.emit('reminders_updated');
+        }
+      } catch (e) {
+        console.error('Failed to run periodic reminders check:', e);
+      }
+    };
+
+    // Check immediately and then every 15 seconds
+    checkReminders();
+    const interval = setInterval(checkReminders, 15000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Toast states for premium visual feedback
@@ -156,6 +213,82 @@ export default function HomeScreen({ onLogout, userName, onUpdateName, apiToken 
       }
     };
   }, []);
+
+  const syncDataFromFetchedNotifications = async (fetchedNotifications: any[]) => {
+    try {
+      // 1. Sync Tasks
+      const tasksStored = await AsyncStorage.getItem('userTasks');
+      const localTasks = tasksStored ? JSON.parse(tasksStored) : [];
+      let tasksUpdated = false;
+
+      // 2. Sync Reminders
+      const remindersStored = await AsyncStorage.getItem('userReminders');
+      const localReminders = remindersStored ? JSON.parse(remindersStored) : [];
+      let remindersUpdated = false;
+
+      for (const n of fetchedNotifications) {
+        const type = n.type || 'general';
+        const title = n.title || '';
+        const body = n.body || '';
+        
+        // Parse payload
+        let payload: any = {};
+        if (n.payload) {
+          payload = typeof n.payload === 'string' ? JSON.parse(n.payload) : n.payload;
+        }
+
+        if (type === 'tasks') {
+          // Check for duplicate title
+          const exists = localTasks.some((t: any) => 
+            t.title.toLowerCase().trim() === title.toLowerCase().trim()
+          );
+          if (!exists) {
+            localTasks.unshift({
+              id: 'sync_' + n.id,
+              title: title.trim(),
+              description: body.trim() || undefined,
+              priority: (payload.priority || 'low').toLowerCase() as 'low' | 'medium' | 'high',
+              dueDate: payload.dueDate ? payload.dueDate.trim() : undefined,
+              isCompleted: false,
+            });
+            tasksUpdated = true;
+          }
+        } else if (type === 'reminder') {
+          const date = payload.date;
+          const time = payload.time;
+          if (date && time) {
+            const exists = localReminders.some((r: any) => 
+              r.title.toLowerCase() === title.toLowerCase() && 
+              r.date === date && 
+              r.time === time
+            );
+            if (!exists) {
+              localReminders.unshift({
+                id: 'sync_' + n.id,
+                title: title.trim(),
+                date: date.trim(),
+                time: time.trim(),
+                isEnabled: true,
+              });
+              remindersUpdated = true;
+            }
+          }
+        }
+      }
+
+      if (tasksUpdated) {
+        await AsyncStorage.setItem('userTasks', JSON.stringify(localTasks));
+        DeviceEventEmitter.emit('tasks_updated');
+      }
+
+      if (remindersUpdated) {
+        await AsyncStorage.setItem('userReminders', JSON.stringify(localReminders));
+        DeviceEventEmitter.emit('reminders_updated');
+      }
+    } catch (e) {
+      console.error('Error syncing data from fetched notifications:', e);
+    }
+  };
 
   const fetchNotifications = useCallback(async (isPullToRefresh = false) => {
     if (isPullToRefresh) {
@@ -202,6 +335,9 @@ export default function HomeScreen({ onLogout, userName, onUpdateName, apiToken 
 
         setNotifications(unique);
         showToast('Notifications updated successfully!');
+        
+        // Sync database notifications (reminders & tasks) to local storage
+        await syncDataFromFetchedNotifications(data.notifications);
       }
     } catch (error: any) {
       console.error('Error fetching notifications:', error);
@@ -286,63 +422,32 @@ export default function HomeScreen({ onLogout, userName, onUpdateName, apiToken 
       newDismissed.add(id);
       setDismissedIds(newDismissed);
       await AsyncStorage.setItem('dismissedNotificationIds', JSON.stringify(Array.from(newDismissed)));
-      showToast('Notification removed from home');
+      showToast('Notification dismissed');
     } catch (e) {
       console.error('Failed to save dismissed notification ID:', e);
-      showToast('Failed to remove notification');
+      showToast('Failed to dismiss notification');
     }
   };
 
-  const getIconForType = (type: NotificationItem['type']) => {
-    switch (type) {
-      case 'announcement': return '📢';
-      case 'alert': return '⚠️';
-      case 'message': return '✉️';
-      default: return '🔔';
+  const handleRestoreNotification = async (id: string) => {
+    try {
+      const newDismissed = new Set(dismissedIds);
+      newDismissed.delete(id);
+      setDismissedIds(newDismissed);
+      await AsyncStorage.setItem('dismissedNotificationIds', JSON.stringify(Array.from(newDismissed)));
+      showToast('Notification restored');
+    } catch (e) {
+      console.error('Failed to restore notification:', e);
+      showToast('Failed to restore notification');
     }
   };
 
-  const renderNotification = ({ item }: { item: NotificationItem }) => (
-    <View style={[styles.notificationCard, !item.isRead && styles.unreadCard]}>
-      <View style={styles.notificationHeader}>
-        <View style={styles.iconWrapper}>
-          <Text style={styles.iconText}>{getIconForType(item.type)}</Text>
-        </View>
-        <View style={styles.notificationTitleWrapper}>
-          <Text style={styles.notificationTitle}>{item.title}</Text>
-          <Text style={styles.notificationTime}>{item.time}</Text>
-        </View>
-        <TouchableOpacity 
-          style={styles.cardRemoveButton} 
-          onPress={() => handleRemoveNotification(item.id)}
-          activeOpacity={0.6}
-        >
-          <Text style={styles.cardRemoveText}>✕</Text>
-        </TouchableOpacity>
-      </View>
-      <Text style={styles.notificationDescription}>{item.description}</Text>
-    </View>
-  );
-
-  const renderPreviousNotification = ({ item }: { item: NotificationItem }) => (
-    <View style={[styles.notificationCard, !item.isRead && styles.unreadCard]}>
-      <View style={styles.notificationHeader}>
-        <View style={styles.iconWrapper}>
-          <Text style={styles.iconText}>{getIconForType(item.type)}</Text>
-        </View>
-        <View style={styles.notificationTitleWrapper}>
-          <Text style={styles.notificationTitle}>{item.title}</Text>
-          <Text style={styles.notificationTime}>{item.time}</Text>
-        </View>
-        {dismissedIds.has(item.id) && (
-          <View style={styles.archivedBadge}>
-            <Text style={styles.archivedBadgeText}>Removed</Text>
-          </View>
-        )}
-      </View>
-      <Text style={styles.notificationDescription}>{item.description}</Text>
-    </View>
-  );
+  const tabs = [
+    { id: 'notifications', label: 'Alerts', icon: '🔔' },
+    { id: 'reminders', label: 'Reminder', icon: '⏰' },
+    { id: 'tasks', label: 'Tasks', icon: '✅' },
+    { id: 'previous', label: 'History', icon: '📁' },
+  ] as const;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -355,18 +460,20 @@ export default function HomeScreen({ onLogout, userName, onUpdateName, apiToken 
             <Text style={styles.userPhone}>{userName || 'User'}</Text>
           </View>
           <View style={styles.headerRight}>
-            <TouchableOpacity
-              style={styles.refreshButton}
-              onPress={() => fetchNotifications(false)}
-              activeOpacity={0.7}
-              disabled={loading || refreshing}
-            >
-              {loading && !refreshing ? (
-                <ActivityIndicator size="small" color="#A78BFA" />
-              ) : (
-                <Text style={styles.refreshIcon}>🔄</Text>
-              )}
-            </TouchableOpacity>
+            {(activeTab === 'notifications' || activeTab === 'previous') && (
+              <TouchableOpacity
+                style={styles.refreshButton}
+                onPress={() => fetchNotifications(false)}
+                activeOpacity={0.7}
+                disabled={loading || refreshing}
+              >
+                {loading && !refreshing ? (
+                  <ActivityIndicator size="small" color="#A78BFA" />
+                ) : (
+                  <Text style={styles.refreshIcon}>🔄</Text>
+                )}
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.menuButton}
               onPress={() => setMenuVisible(true)}
@@ -379,25 +486,60 @@ export default function HomeScreen({ onLogout, userName, onUpdateName, apiToken 
           </View>
         </View>
 
-        {/* Content */}
-        <Text style={styles.sectionTitle}>Recent Notifications</Text>
-        
-        <FlatList
-          data={notifications.filter(n => !dismissedIds.has(n.id))}
-          keyExtractor={(item) => item.id}
-          renderItem={renderNotification}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshing={refreshing}
-          onRefresh={handlePullToRefresh}
-          ListEmptyComponent={
-            loading ? (
-              <ActivityIndicator size="large" color="#7C3AED" style={styles.emptyLoader} />
-            ) : (
-              <Text style={styles.emptyText}>No notifications yet.</Text>
-            )
-          }
-        />
+        {/* Tab Content Router */}
+        <View style={styles.tabContent}>
+          {activeTab === 'notifications' && (
+            <NotificationsTab
+              notifications={notifications}
+              dismissedIds={dismissedIds}
+              loading={loading}
+              refreshing={refreshing}
+              onRefresh={handlePullToRefresh}
+              onRemoveNotification={handleRemoveNotification}
+            />
+          )}
+
+          {activeTab === 'reminders' && (
+            <ReminderTimerTab />
+          )}
+
+          {activeTab === 'tasks' && (
+            <TasksTab />
+          )}
+
+          {activeTab === 'previous' && (
+            <PrvNotificationsTab
+              notifications={notifications}
+              dismissedIds={dismissedIds}
+              loading={loading}
+              refreshing={refreshing}
+              onRefresh={handlePullToRefresh}
+              onRestoreNotification={handleRestoreNotification}
+            />
+          )}
+        </View>
+
+        {/* Floating Custom Bottom Tab Bar */}
+        <View style={styles.tabBarContainer}>
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <TouchableOpacity
+                key={tab.id}
+                style={styles.tabBarItem}
+                onPress={() => setActiveTab(tab.id)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.tabBarIcon, isActive && styles.activeTabBarIcon]}>
+                  {tab.icon}
+                </Text>
+                <Text style={[styles.tabBarLabel, isActive && styles.activeTabBarLabel]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
         {/* Full-Screen Menu Modal */}
         <Modal
@@ -427,11 +569,11 @@ export default function HomeScreen({ onLogout, userName, onUpdateName, apiToken 
                   activeOpacity={0.7}
                   onPress={() => {
                     setMenuVisible(false);
-                    setPreviousVisible(true);
+                    setActiveTab('previous');
                   }}
                 >
-                  <Text style={styles.menuItemIcon}>📋</Text>
-                  <Text style={styles.menuItemText}>Previous Notifications</Text>
+                  <Text style={styles.menuItemIcon}>📁</Text>
+                  <Text style={styles.menuItemText}>Notification History</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
@@ -565,42 +707,6 @@ export default function HomeScreen({ onLogout, userName, onUpdateName, apiToken 
             </View>
           </View>
         </Modal>
-
-        {/* Previous Notifications Modal */}
-        <Modal
-          visible={previousVisible}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setPreviousVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity 
-              style={styles.modalBackdrop} 
-              activeOpacity={1} 
-              onPress={() => setPreviousVisible(false)} 
-            />
-            
-            <View style={[styles.menuContainer, styles.historyContainer]}>
-              <View style={styles.menuHeader}>
-                <Text style={styles.menuTitle}>Previous Notifications</Text>
-                <TouchableOpacity onPress={() => setPreviousVisible(false)}>
-                  <Text style={styles.closeMenuText}>✕</Text>
-                </TouchableOpacity>
-              </View>
-
-              <FlatList
-                data={notifications}
-                keyExtractor={(item) => item.id}
-                renderItem={renderPreviousNotification}
-                contentContainerStyle={styles.listContent}
-                showsVerticalScrollIndicator={false}
-                ListEmptyComponent={
-                  <Text style={styles.emptyText}>No previous notifications.</Text>
-                }
-              />
-            </View>
-          </View>
-        </Modal>
       </View>
 
       {/* Toast Alert */}
@@ -646,7 +752,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: Platform.OS === 'android' ? 24 : 12,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   greeting: {
     fontSize: 16,
@@ -675,74 +781,53 @@ const styles = StyleSheet.create({
     marginVertical: 2,
     borderRadius: 1,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 16,
+  tabContent: {
+    flex: 1,
   },
-  listContent: {
-    paddingBottom: 40,
-  },
-  notificationCard: {
-    backgroundColor: '#1E1B2E',
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
+  // Floating Tab Bar
+  tabBarContainer: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 24 : 16,
+    left: 0,
+    right: 0,
+    height: 72,
+    backgroundColor: 'rgba(30, 27, 46, 0.95)',
+    borderRadius: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
     borderWidth: 1.5,
     borderColor: '#2D2942',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 10,
+    marginHorizontal: 12,
   },
-  unreadCard: {
-    borderColor: '#7C3AED',
-    backgroundColor: '#231F3B',
-  },
-  notificationHeader: {
-    flexDirection: 'row',
+  tabBarItem: {
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  iconWrapper: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#0B0914',
     justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-    borderWidth: 1,
-    borderColor: '#2D2942',
-  },
-  iconText: {
-    fontSize: 18,
-  },
-  notificationTitleWrapper: {
     flex: 1,
+    height: '100%',
   },
-  notificationTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
+  tabBarIcon: {
+    fontSize: 20,
+    color: '#64748B',
     marginBottom: 4,
   },
-  notificationTime: {
-    fontSize: 12,
+  activeTabBarIcon: {
+    color: '#A78BFA',
+    transform: [{ scale: 1.1 }],
+  },
+  tabBarLabel: {
+    fontSize: 11,
+    fontWeight: '600',
     color: '#64748B',
   },
-  notificationDescription: {
-    fontSize: 14,
-    color: '#94A3B8',
-    lineHeight: 22,
-  },
-  emptyText: {
-    color: '#64748B',
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 40,
+  activeTabBarLabel: {
+    color: '#A78BFA',
+    fontWeight: '700',
   },
   modalOverlay: {
     flex: 1,
@@ -838,7 +923,7 @@ const styles = StyleSheet.create({
   },
   toastContainer: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 50 : 30,
+    bottom: Platform.OS === 'ios' ? 110 : 90, // Positioned nicely above the bottom floating tab bar
     left: 20,
     right: 20,
     backgroundColor: '#1E1B2E',
@@ -868,9 +953,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     lineHeight: 18,
-  },
-  emptyLoader: {
-    marginTop: 40,
   },
   profileForm: {
     marginTop: 8,
@@ -936,31 +1018,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
-  },
-  cardRemoveButton: {
-    padding: 6,
-    marginLeft: 8,
-  },
-  cardRemoveText: {
-    color: '#64748B',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  archivedBadge: {
-    backgroundColor: 'rgba(100, 116, 139, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(100, 116, 139, 0.25)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginLeft: 8,
-  },
-  archivedBadgeText: {
-    color: '#94A3B8',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  historyContainer: {
-    height: '85%',
   },
 });

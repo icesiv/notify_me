@@ -1,5 +1,14 @@
-import messaging from '@react-native-firebase/messaging';
-import { Platform, Alert, PermissionsAndroid } from 'react-native';
+import {
+  getMessaging,
+  getToken,
+  onMessage,
+  setBackgroundMessageHandler,
+  onTokenRefresh,
+  requestPermission,
+  AuthorizationStatus
+} from '@react-native-firebase/messaging';
+import { Platform, Alert, PermissionsAndroid, DeviceEventEmitter } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL, getApiHeaders } from '../config/api';
 
 class FirebaseMessagingService {
@@ -14,10 +23,11 @@ class FirebaseMessagingService {
 
   private async requestUserPermission() {
     if (Platform.OS === 'ios') {
-      const authStatus = await messaging().requestPermission();
+      const messagingInstance = getMessaging();
+      const authStatus = await requestPermission(messagingInstance);
       const enabled =
-        authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-        authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+        authStatus === AuthorizationStatus.AUTHORIZED ||
+        authStatus === AuthorizationStatus.PROVISIONAL;
 
       if (enabled) {
         console.log('Authorization status:', authStatus);
@@ -42,7 +52,8 @@ class FirebaseMessagingService {
 
   private async getToken() {
     try {
-      const token = await messaging().getToken();
+      const messagingInstance = getMessaging();
+      const token = await getToken(messagingInstance);
       console.log('FCM Token:', token);
       await this.sendTokenToBackend(token);
     } catch (error) {
@@ -51,25 +62,140 @@ class FirebaseMessagingService {
   }
 
   private setupListeners() {
+    const messagingInstance = getMessaging();
+
     // Handle foreground messages
-    messaging().onMessage(async remoteMessage => {
+    onMessage(messagingInstance, async remoteMessage => {
       console.log('A new FCM message arrived in the foreground!', remoteMessage);
-      Alert.alert(
-        remoteMessage.notification?.title || 'Notification',
-        remoteMessage.notification?.body || ''
-      );
+      await this.processFcmMessage(remoteMessage, true);
     });
 
     // Handle background messages
-    messaging().setBackgroundMessageHandler(async remoteMessage => {
+    setBackgroundMessageHandler(messagingInstance, async remoteMessage => {
       console.log('Message handled in the background!', remoteMessage);
+      await this.processFcmMessage(remoteMessage, false);
     });
 
     // Handle token refresh
-    messaging().onTokenRefresh(async token => {
+    onTokenRefresh(messagingInstance, async token => {
       console.log('FCM Token refreshed:', token);
       await this.sendTokenToBackend(token);
     });
+  }
+
+  private async processFcmMessage(remoteMessage: any, isForeground: boolean) {
+    console.log(`Processing FCM Message (${isForeground ? 'Foreground' : 'Background'}):`, remoteMessage);
+
+    const { data } = remoteMessage;
+    if (!data) return;
+
+    const type = data.type || 'general';
+    const title = data.title || remoteMessage.notification?.title || 'New Update';
+    const body = data.body || remoteMessage.notification?.body || '';
+
+    if (type === 'reminder') {
+      try {
+        const date = data.date;
+        const time = data.time;
+        if (!date || !time) return;
+
+        // 1. Save reminder to AsyncStorage
+        const stored = await AsyncStorage.getItem('userReminders');
+        const reminders = stored ? JSON.parse(stored) : [];
+        
+        // Avoid duplicate by title + date + time
+        const exists = reminders.some((r: any) => 
+          r.title.toLowerCase() === title.toLowerCase() && 
+          r.date === date && 
+          r.time === time
+        );
+
+        if (!exists) {
+          const newReminder = {
+            id: remoteMessage.messageId || Date.now().toString(),
+            title: title.trim(),
+            date: date.trim(),
+            time: time.trim(),
+            isEnabled: true,
+          };
+          reminders.unshift(newReminder);
+          await AsyncStorage.setItem('userReminders', JSON.stringify(reminders));
+          
+          // Emit event to update UI in active views
+          DeviceEventEmitter.emit('reminders_updated');
+          console.log('Saved new reminder from FCM:', newReminder);
+        }
+
+        if (isForeground) {
+          Alert.alert('⏰ Reminder Scheduled', `${title}\nScheduled for: ${date} at ${time}`);
+        }
+      } catch (e) {
+        console.error('Error saving FCM reminder:', e);
+      }
+    } else if (type === 'timer') {
+      try {
+        const durationSecs = Number(data.duration);
+        if (isNaN(durationSecs) || durationSecs <= 0) return;
+
+        const endTime = Date.now() + durationSecs * 1000;
+        
+        // Save running timer details
+        await AsyncStorage.setItem('activeTimerEndTime', String(endTime));
+        await AsyncStorage.setItem('activeTimerDuration', String(durationSecs));
+        
+        DeviceEventEmitter.emit('timer_updated');
+        console.log('Saved new active timer from FCM. Ends at:', new Date(endTime));
+
+        if (isForeground) {
+          Alert.alert('⏳ Timer Started', `Timer for ${durationSecs} seconds has started!`);
+        }
+      } catch (e) {
+        console.error('Error starting FCM timer:', e);
+      }
+    } else if (type === 'tasks') {
+      try {
+        const description = data.body || '';
+        const priority = (data.priority || 'low').toLowerCase();
+        const dueDate = data.dueDate || '';
+
+        const stored = await AsyncStorage.getItem('userTasks');
+        const tasks = stored ? JSON.parse(stored) : [];
+
+        // Check for duplicates
+        const isDuplicate = tasks.some((t: any) => 
+          t.title.toLowerCase().trim() === title.toLowerCase().trim()
+        );
+
+        if (!isDuplicate) {
+          const newTask = {
+            id: remoteMessage.messageId || Date.now().toString(),
+            title: title.trim(),
+            description: description.trim() || undefined,
+            priority: priority as 'low' | 'medium' | 'high',
+            dueDate: dueDate.trim() || undefined,
+            isCompleted: false,
+          };
+          tasks.unshift(newTask);
+          await AsyncStorage.setItem('userTasks', JSON.stringify(tasks));
+
+          DeviceEventEmitter.emit('tasks_updated');
+          console.log('Saved new task from FCM:', newTask);
+          
+          if (isForeground) {
+            Alert.alert('✅ New Task Added', title);
+          }
+        } else {
+          console.log('Duplicate task skipped:', title);
+        }
+      } catch (e) {
+        console.error('Error saving FCM task:', e);
+      }
+    } else {
+      // General notification
+      if (isForeground) {
+        Alert.alert(title, body);
+      }
+    }
   }
 
   private async sendTokenToBackend(fcmToken: string) {

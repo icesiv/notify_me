@@ -25,7 +25,7 @@ class UserResource extends Resource
     {
         return $schema
             ->schema([
-                Forms\Components\Section::make('User Information')
+                \Filament\Schemas\Components\Section::make('User Information')
                     ->schema([
                         Forms\Components\TextInput::make('name')
                             ->label('Full Name')
@@ -43,7 +43,7 @@ class UserResource extends Resource
                             ->maxLength(255)
                             ->label(fn (string $operation): string => $operation === 'create' ? 'Password' : 'New Password (leave blank to keep current)'),
                     ]),
-                Forms\Components\Section::make('Account Status')
+                \Filament\Schemas\Components\Section::make('Account Status')
                     ->schema([
                         Forms\Components\Select::make('role')
                             ->label('Role')

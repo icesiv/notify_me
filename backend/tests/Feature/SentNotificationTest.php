@@ -2,8 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Filament\Pages\SendNotification;
-use App\Filament\Resources\SentNotificationResource\Pages\ListSentNotifications;
+use App\Filament\Pages\Notifications;
 use App\Models\Client;
 use App\Models\SentNotification;
 use App\Models\User;
@@ -41,7 +40,7 @@ class SentNotificationTest extends TestCase
             'fcm_token' => 'mock_token',
         ]);
 
-        Livewire::test(SendNotification::class)
+        Livewire::test(Notifications::class)
             ->fillForm([
                 'title' => 'Test Title',
                 'body' => 'Test Body',
@@ -81,7 +80,7 @@ class SentNotificationTest extends TestCase
             'fcm_token' => 'mock_token',
         ]);
 
-        Livewire::test(SendNotification::class)
+        Livewire::test(Notifications::class)
             ->fillForm([
                 'title' => 'Global Title',
                 'body' => 'Global Body',
@@ -117,7 +116,7 @@ class SentNotificationTest extends TestCase
             'body' => 'Duplicated Body',
             'client_id' => (string) $client->id,
         ])
-        ->test(SendNotification::class)
+        ->test(Notifications::class)
         ->assertSet('data.title', 'Duplicated Title')
         ->assertSet('data.body', 'Duplicated Body')
         ->assertSet('data.client_id', (string) $client->id);
@@ -137,7 +136,7 @@ class SentNotificationTest extends TestCase
             'sent_to_all' => true,
         ]);
 
-        Livewire::test(ListSentNotifications::class)
+        Livewire::test(Notifications::class)
             ->callTableAction('delete', $notification);
 
         $this->assertModelMissing($notification);
@@ -173,9 +172,26 @@ class SentNotificationTest extends TestCase
             'sent_to_all' => true,
         ]);
 
-        Livewire::test(ListSentNotifications::class)
+        Livewire::test(Notifications::class)
             ->callTableAction('resend', $notification);
 
         $this->assertDatabaseCount('sent_notifications', 2);
+    }
+
+    public function test_title_longer_than_65_characters_fails_validation()
+    {
+        $user = User::factory()->create([
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+        $this->actingAs($user);
+
+        Livewire::test(Notifications::class)
+            ->fillForm([
+                'title' => str_repeat('a', 66),
+                'body' => 'Test Body',
+            ])
+            ->call('send')
+            ->assertHasErrors(['data.title' => 'max']);
     }
 }
