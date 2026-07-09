@@ -32,8 +32,8 @@ class ClientFactory extends Factory
     public function definition(): array
     {
         return [
-            'full_name' => $this->faker->name(),
-            'phone_number' => $this->faker->unique()->phoneNumber(),
+            'full_name' => fake()->name(),
+            'phone_number' => fake()->unique()->phoneNumber(),
             'password' => static::$password ??= Hash::make('password'),
             'api_token' => Str::random(80),
             'fcm_token' => null,
